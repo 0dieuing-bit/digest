@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+[hidden] { display: none !important; }
+body { margin: 0; }
+img { max-width: 100%; }
+</style>
+<title>소화 메모리 게임</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: classroom projector board — header with level picker, score row, card grid sized by level, feedback strip. One light look on purpose (projectors). */
+:root {
+  --ink: #1F2A44;
+  --ink-soft: #4A5568;
+  --paper: #F1ECE2;
+  --card: #FFFDF8;
+  --line: #D9CFBD;
+  --accent: #B55A1A;
+  --accent-soft: #F2A65A;
+  --navy-2: #2E3D5F;
+  --good: #3F8F55;
+  --good-soft: #E6F1E8;
+  --bad: #B04A3A;
+  --display: 'Jua', 'Noto Sans KR', system-ui, sans-serif;
+  --body: 'Noto Sans KR', system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.wrap { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05; margin: 0; text-wrap: balance; }
+.sub { margin: 6px 0 0; color: var(--ink-soft); font-size: clamp(15px, 1.5vw, 20px); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; background: var(--card); border: 2px solid var(--line); border-radius: 999px; padding: 4px; }
+.seg button, .btn {
+  font-family: var(--body); font-weight: 700; font-size: 16px; border: 0; cursor: pointer;
+  border-radius: 999px; padding: 10px 18px; background: transparent; color: var(--ink-soft);
+}
+.seg button small { font-weight: 500; opacity: .8; margin-left: 4px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: #F6F1E7; }
+.btn { background: var(--card); border: 2px solid var(--line); color: var(--ink); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #FFFDF8; }
+button:focus-visible { outline: 4px solid var(--accent-soft); outline-offset: 3px; }
+
+.status { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+.score {
+  display: flex; align-items: center; gap: 14px; background: var(--card); border: 2px solid var(--line);
+  border-radius: 16px; padding: 10px 20px; font-size: 18px; font-variant-numeric: tabular-nums;
+}
+.score b { font-family: var(--display); font-weight: 400; font-size: 34px; line-height: 1; }
+.team.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.team .turn { font-size: 14px; font-weight: 700; color: var(--accent); }
+.team:not(.active) .turn { visibility: hidden; }
+
+.grid { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: clamp(8px, 1.2vw, 16px); max-width: var(--gridmax, 100%); width: 100%; margin: 0 auto; }
+.cardbtn { appearance: none; border: 0; padding: 0; background: none; cursor: pointer; perspective: 900px; aspect-ratio: 4 / 5; max-width: 100%; font: inherit; color: inherit; container-type: inline-size; }
+.inner { position: relative; width: 100%; height: 100%; transition: transform .45s ease; transform-style: preserve-3d; }
+.cardbtn.open .inner, .cardbtn.done .inner { transform: rotateY(180deg); }
+.face { position: absolute; inset: 0; border-radius: 16px; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+.back {
+  background-color: var(--ink);
+  background-image: radial-gradient(circle at 20% 25%, var(--navy-2) 0 14%, transparent 15%), radial-gradient(circle at 78% 70%, var(--navy-2) 0 18%, transparent 19%);
+  border: 3px solid var(--navy-2);
+}
+.back span { font-family: var(--display); font-size: 34cqi; color: var(--accent-soft); line-height: 1; }
+.cardbtn:hover:not(.open):not(.done) .back { border-color: var(--accent-soft); }
+.front { transform: rotateY(180deg); background: var(--card); border: 3px solid var(--line); padding: 9% 7%; gap: 4%; }
+.chip { font-size: clamp(11px, 8cqi, 16px); font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--paper); color: var(--ink-soft); white-space: nowrap; }
+.front svg { width: 92%; height: auto; flex: 0 1 auto; min-height: 0; }
+.name { font-family: var(--display); font-size: clamp(14px, 13cqi, 36px); line-height: 1.12; text-align: center; text-wrap: balance; word-break: keep-all; }
+.name.long { font-size: clamp(12px, 9.5cqi, 28px); }
+.note { font-size: clamp(10px, 7cqi, 16px); color: var(--ink-soft); text-align: center; line-height: 1.25; word-break: keep-all; }
+.cardbtn.done .front { border-color: var(--good); background: var(--good-soft); }
+.cardbtn.done .front::after { content: "✓"; position: absolute; top: 4px; right: 8px; font-weight: 700; font-size: clamp(14px, 10cqi, 24px); color: var(--good); }
+.cardbtn.wrong .front { border-color: var(--bad); }
+
+.feedback {
+  min-height: 72px; display: flex; align-items: center; gap: 16px; background: var(--ink); color: #F6F1E7;
+  border-radius: 18px; padding: 14px 22px; font-size: clamp(16px, 1.8vw, 24px); line-height: 1.4;
+}
+.feedback strong { font-family: var(--display); font-weight: 400; color: var(--accent-soft); font-size: 1.15em; white-space: nowrap; }
+
+.win { position: fixed; inset: 0; background: rgba(31, 42, 68, .72); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 20; }
+.win .box { background: var(--card); border-radius: 24px; padding: 32px 40px; max-width: 520px; width: 100%; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.win h2 { font-family: var(--display); font-weight: 400; font-size: 44px; margin: 0; }
+.win p { margin: 0; font-size: 20px; color: var(--ink-soft); }
+
+.rules { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rules .lead { font-family: var(--display); font-size: clamp(18px, 2vw, 26px); color: var(--ink); margin-right: 4px; }
+.rule { display: inline-flex; align-items: center; gap: 10px; background: var(--card); border: 2px solid var(--line); border-radius: 999px; padding: 8px 18px; font-size: clamp(15px, 1.7vw, 22px); font-weight: 700; }
+.rule i { font-style: normal; color: var(--accent); font-weight: 700; }
+.credit { text-align: center; color: var(--ink-soft); font-size: clamp(14px, 1.4vw, 18px); padding-top: 4px; }
+.credit b { font-family: var(--display); font-weight: 400; color: var(--ink); font-size: 1.15em; }
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns: repeat(var(--cols-sm, 3), minmax(0, 1fr)); }
+  .seg button, .btn { padding: 8px 12px; font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .inner { transition: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>소화 메모리 게임</h1>
+      <p class="sub" id="sub"></p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="난이도">
+        <button id="lv-easy" aria-pressed="true">쉬움<small>4쌍</small></button>
+        <button id="lv-normal" aria-pressed="false">보통<small>7쌍</small></button>
+        <button id="lv-hard" aria-pressed="false">어려움<small>14쌍</small></button>
+      </div>
+      <div class="seg" role="group" aria-label="참가 방식">
+        <button id="play-solo" aria-pressed="true">함께 풀기</button>
+        <button id="play-team" aria-pressed="false">팀 대결</button>
+      </div>
+      <button class="btn" id="reveal">정답 보기</button>
+      <button class="btn primary" id="restart">새 게임</button>
+    </div>
+  </header>
+
+  <div class="status" id="status"></div>
+  <div class="rules" id="rules" aria-label="짝 짓는 방법"></div>
+  <div class="grid" id="grid"></div>
+  <div class="feedback" id="feedback" aria-live="polite"></div>
+  <footer class="credit"><b>해누리중학교 과학 고영은 선생님</b></footer>
+</div>
+
+<div class="win" id="win" hidden>
+  <div class="box">
+    <h2 id="win-title">모든 짝을 찾았어요!</h2>
+    <p id="win-text"></p>
+    <button class="btn primary" id="again">한 번 더</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ---------- 모형 그림 (슬라이드와 같은 모양) ----------
+  const hex = (x, y) => `<polygon points="${x},${y-14} ${x+12},${y-7} ${x+12},${y+7} ${x},${y+14} ${x-12},${y+7} ${x-12},${y-7}" fill="#9B82D1" stroke="#4B3A80" stroke-width="3"/>`;
+  const circ = (x, y) => `<circle cx="${x}" cy="${y}" r="12" fill="#E2574C" stroke="#7A2A22" stroke-width="3"/>`;
+  const sq = (x, y) => `<rect x="${x-11}" y="${y-11}" width="22" height="22" fill="#F2C14E" stroke="#8A6A12" stroke-width="3"/>`;
+  const tri = (x, y) => `<polygon points="${x},${y-13} ${x+13},${y+10} ${x-13},${y+10}" fill="#6DBE5A" stroke="#2D5E38" stroke-width="3"/>`;
+  const stick = (x, y) => `<rect x="${x}" y="${y-6}" width="56" height="12" rx="6" fill="#F4A259" stroke="#8A4313" stroke-width="3"/>`;
+  const bar = (x, y) => `<rect x="${x-7}" y="${y-34}" width="14" height="68" rx="5" fill="#B5561C" stroke="#6E2F0A" stroke-width="3"/>`;
+  const svg = (inner, label) => `<svg viewBox="0 0 200 120" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+  const chainPts = n => Array.from({ length: n }, (_, i) => [22 + i * 26, i % 2 ? 52 : 68]);
+  const line = (pts, c) => `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="4"/>`;
+  const pacG = (x, y, s, fill, stroke) => `<g transform="translate(${x} ${y}) scale(${s})"><path d="M0 0 L40 -24 A46 46 0 1 0 40 24 Z" fill="${fill}" stroke="${stroke}" stroke-width="3"/><circle cx="-2" cy="-24" r="6" fill="#1F2A44"/></g>`;
+  const drop = (x, y, s, fill, stroke) => `<g transform="translate(${x} ${y}) scale(${s})"><path d="M0 -50 C0 -50 -34 -4 -34 18 A34 34 0 0 0 34 18 C34 -4 0 -50 0 -50 Z" fill="${fill}" stroke="${stroke}" stroke-width="4"/></g>`;
+  const E = { aml: ['#7A5FC0', '#3E2C78'], pep: ['#3F8F55', '#1F5E33'], try: ['#2F7E8C', '#17505A'], lip: ['#D9822B', '#8A4313'], mal: ['#C46BA8', '#7A2E66'], ptd: ['#4F86C6', '#24507F'] };
+
+  const ART = {
+    starch: () => { const p = chainPts(7); return svg(line(p, '#4B3A80') + p.map(([x, y]) => hex(x, y)).join(''), '녹말 모형'); },
+    protein: () => { const p = chainPts(7); const f = [circ, sq, tri]; return svg(line(p, '#7A2A22') + p.map(([x, y], i) => f[i % 3](x, y)).join(''), '단백질 모형'); },
+    fat: () => svg(stick(77, 36) + stick(77, 60) + stick(77, 84) + bar(70, 60), '지방 모형'),
+    glucose: () => svg(hex(40, 40) + hex(88, 80) + hex(132, 38) + hex(170, 84), '포도당 모형'),
+    amino: () => svg(circ(40, 40) + sq(88, 80) + tri(132, 40) + circ(170, 84), '아미노산 모형'),
+    fatProducts: () => svg(stick(57, 60) + bar(50, 60) + stick(128, 34) + stick(128, 86), '지방산과 모노글리세리드 모형'),
+    maltose: () => svg([[40, 40], [110, 40], [74, 86]].map(([x, y]) => `<path d="M${x} ${y} H${x + 30}" stroke="#4B3A80" stroke-width="4"/>` + hex(x, y) + hex(x + 30, y)).join(''), '엿당 모형(포도당 2개씩)'),
+    pac: (c, label) => svg(pacG(86, 60, 1.15, c[0], c[1]), label),
+    // 분비 기관
+    salivary: () => svg(`<ellipse cx="100" cy="74" rx="62" ry="34" fill="#E2574C" stroke="#7A2A22" stroke-width="4"/><ellipse cx="100" cy="74" rx="46" ry="17" fill="#5A1E1E"/><rect x="68" y="58" width="64" height="9" rx="3" fill="#FFFDF8"/><g fill="#F2CF7A" stroke="#8A6A12" stroke-width="3"><ellipse cx="30" cy="30" rx="20" ry="15"/><ellipse cx="170" cy="30" rx="20" ry="15"/></g><path d="M44 40 L62 58 M156 40 L138 58" stroke="#8A6A12" stroke-width="4" stroke-linecap="round"/>`, '입과 침샘'),
+    stomach: () => svg(`<g transform="translate(-52 -10) scale(0.36)"><rect x="448" y="40" width="28" height="90" fill="#F2A7A0" stroke="#1F2A44" stroke-width="10"/><path d="M470 120 C560 100 640 170 620 290 C600 400 480 420 420 360 C470 360 520 320 520 260 C520 200 480 170 440 170 Z" fill="#F2A7A0" stroke="#1F2A44" stroke-width="11" stroke-linejoin="round"/></g>`, '위'),
+    pancreas: () => svg(`<path d="M22 70 C22 46 60 40 98 44 C140 48 168 36 186 26 C196 40 184 62 158 70 C120 82 70 86 44 92 C30 95 22 86 22 70 Z" fill="#F2CF7A" stroke="#1F2A44" stroke-width="4" stroke-linejoin="round"/><path d="M40 70 C80 64 130 62 172 44" fill="none" stroke="#3B6EA5" stroke-width="4" stroke-linecap="round"/>`, '이자'),
+    liver: () => svg(`<path d="M14 40 C50 18 140 20 190 40 C186 72 156 92 108 96 C64 100 22 86 14 66 Z" fill="#9C5A3C" stroke="#1F2A44" stroke-width="4" stroke-linejoin="round"/><ellipse cx="104" cy="100" rx="12" ry="16" fill="#6BAA5A" stroke="#1F2A44" stroke-width="3"/>`, '간과 쓸개'),
+    // 소화액 (안에 든 효소를 함께)
+    saliva: () => svg(drop(50, 66, 0.9, '#CFE3F2', '#5B7FA6') + pacG(130, 62, 0.7, ...E.aml), '침 방울과 아밀레이스'),
+    gastric: () => svg(drop(46, 66, 0.9, '#D6EBD9', '#3F8F55') + pacG(118, 62, 0.62, ...E.pep) + `<path d="M162 40 H182 M166 40 V60 L156 82 H188 L178 60 V40" fill="#E2F5EE" stroke="#1F2A44" stroke-width="3" stroke-linejoin="round"/>`, '위액 방울과 펩신, 염산'),
+    pancreatic: () => svg(drop(36, 66, 0.8, '#CFE0F5', '#2C568A') + pacG(92, 40, 0.42, ...E.aml) + pacG(150, 40, 0.42, ...E.try) + pacG(122, 88, 0.42, ...E.lip), '이자액 방울과 아밀레이스, 트립신, 라이페이스'),
+    bile: () => svg(drop(60, 66, 0.9, '#6BAA5A', '#2F6B2A') + `<g fill="#F4A259" stroke="#8A4313" stroke-width="3"><circle cx="140" cy="40" r="10"/><circle cx="168" cy="62" r="9"/><circle cx="138" cy="80" r="10"/><circle cx="170" cy="96" r="8"/></g>`, '쓸개즙 방울과 흩어진 지방 방울'),
+    hcl: () => svg(`<path d="M84 12 H116 M90 12 V48 L58 104 Q54 112 64 112 H136 Q146 112 142 104 L110 48 V12" fill="#F5F9FC" stroke="#1F2A44" stroke-width="4" stroke-linejoin="round"/><path d="M70 84 H130 L140 104 Q142 108 136 108 H64 Q58 108 60 104 Z" fill="#9FD6C2"/>`, '염산이 든 플라스크'),
+    germ: () => svg(`<path d="M70 40 L56 26 M130 40 L144 26 M70 80 L56 94 M130 80 L144 94" stroke="#4E7A3A" stroke-width="5" stroke-linecap="round"/><ellipse cx="100" cy="60" rx="40" ry="26" fill="#9BC48C" stroke="#4E7A3A" stroke-width="4"/><path d="M58 22 L142 98 M142 22 L58 98" stroke="#B04A3A" stroke-width="8" stroke-linecap="round"/>`, '세균에 X 표시')
+  };
+
+  // ---------- 카드 묶음 ----------
+  // 짝 규칙: key가 같고 side가 다르면 짝입니다. key 하나에 side a와 b 카드 수가 같아서, 어느 순서로 맞혀도 끝까지 풀 수 있어요.
+  // side a 카드의 msg가 정답 설명으로 나옵니다.
+  const C = {
+    aml:   { key: 'starch', side: 'a', chip: '소화효소', name: '아밀레이스', note: '침 · 이자액 속', art: () => ART.pac(E.aml, '아밀레이스 캐릭터'), msg: ['아밀레이스 + 녹말', '아밀레이스는 침과 이자액 속에 있어요. 녹말을 엿당으로 분해해요.'] },
+    pep:   { key: 'protein', side: 'a', chip: '소화효소', name: '펩신', note: '위액 속', art: () => ART.pac(E.pep, '펩신 캐릭터'), msg: ['펩신 + 단백질', '펩신은 위액 속에 있어요. 위에서 단백질을 더 작게 분해해요.'] },
+    try:   { key: 'protein', side: 'a', chip: '소화효소', name: '트립신', note: '이자액 속', art: () => ART.pac(E.try, '트립신 캐릭터'), msg: ['트립신 + 단백질', '트립신은 이자액 속에 있어요. 작은창자에서 단백질을 더 작게 분해해요.'] },
+    lip:   { key: 'fat', side: 'a', chip: '소화효소', name: '라이페이스', note: '이자액 속', art: () => ART.pac(E.lip, '라이페이스 캐릭터'), msg: ['라이페이스 + 지방', '라이페이스는 이자액 속에 있어요. 지방을 지방산과 모노글리세리드로 분해해요.'] },
+    mal:   { key: 'maltose', side: 'a', chip: '소화효소', name: '말테이스', note: '작은창자 벽', art: () => ART.pac(E.mal, '말테이스 캐릭터'), msg: ['말테이스 + 엿당', '말테이스는 작은창자 벽(상피세포)에 있어요. 엿당을 포도당으로 분해해요.'] },
+    maltose: { key: 'maltose', side: 'b', chip: '영양소', name: '엿당', note: '포도당 2개', art: ART.maltose },
+    ptd:   { key: 'protein', side: 'a', chip: '소화효소', name: '펩티데이스', note: '작은창자 벽', art: () => ART.pac(E.ptd, '펩티데이스 캐릭터'), msg: ['펩티데이스 + 단백질', '펩티데이스는 작은창자 벽(상피세포)에 있어요. 짧게 잘린 단백질을 아미노산으로 분해해요.'] },
+    glu:   { key: 'starch', side: 'a', chip: '최종 산물', name: '포도당', art: ART.glucose, msg: ['녹말 → 포도당', '녹말은 입과 작은창자에서 소화되어 최종적으로 포도당이 돼요.'] },
+    ami:   { key: 'protein', side: 'a', chip: '최종 산물', name: '아미노산', art: ART.amino, msg: ['단백질 → 아미노산', '단백질은 위와 작은창자에서 소화되어 최종적으로 아미노산이 돼요.'] },
+    fap:   { key: 'fat', side: 'a', chip: '최종 산물', name: '지방산 + 모노글리세리드', long: true, art: ART.fatProducts, msg: ['지방 → 지방산 + 모노글리세리드', '지방은 작은창자에서 소화되어 지방산과 모노글리세리드가 돼요.'] },
+    starch:  { key: 'starch', side: 'b', chip: '영양소', name: '녹말', art: ART.starch },
+    protein: { key: 'protein', side: 'b', chip: '영양소', name: '단백질', art: ART.protein },
+    fat:     { key: 'fat', side: 'b', chip: '영양소', name: '지방', art: ART.fat },
+    salG:  { key: 'saliva', side: 'a', chip: '분비 기관', name: '침샘', art: ART.salivary, msg: ['침샘 → 침', '침샘에서 침이 나와요. 침 속에는 아밀레이스가 들어 있어요.'] },
+    sal:   { key: 'saliva', side: 'b', chip: '소화액', name: '침', note: '아밀레이스', art: ART.saliva },
+    stoG:  { key: 'gastric', side: 'a', chip: '분비 기관', name: '위', art: ART.stomach, msg: ['위 → 위액', '위에서 위액이 나와요. 위액 속에는 펩신과 염산이 들어 있어요.'] },
+    gas:   { key: 'gastric', side: 'b', chip: '소화액', name: '위액', note: '펩신 · 염산', art: ART.gastric },
+    panG:  { key: 'pancreatic', side: 'a', chip: '분비 기관', name: '이자', art: ART.pancreas, msg: ['이자 → 이자액', '이자에서 이자액이 나와 작은창자로 가요. 아밀레이스, 트립신, 라이페이스가 모두 들어 있어요.'] },
+    pan:   { key: 'pancreatic', side: 'b', chip: '소화액', name: '이자액', note: '아밀레이스 · 트립신 · 라이페이스', art: ART.pancreatic },
+    livG:  { key: 'bile', side: 'a', chip: '분비 기관', name: '간', note: '쓸개에 저장', art: ART.liver, msg: ['간 → 쓸개즙', '간에서 쓸개즙을 만들어 쓸개에 저장해요. 소화효소는 없지만 지방 덩어리를 흩어지게 해요.'] },
+    bil:   { key: 'bile', side: 'b', chip: '소화액', name: '쓸개즙', note: '소화효소 없음', art: ART.bile },
+    hcl:   { key: 'hcl', side: 'a', chip: '위액 속 물질', name: '염산', art: ART.hcl, msg: ['염산', '위액 속 염산은 음식물 속 세균을 죽이고 펩신의 작용을 도와요.'] },
+    hclJob:{ key: 'hcl', side: 'b', chip: '하는 일', name: '세균 제거 · 펩신 도움', long: true, art: ART.germ }
+  };
+
+  const LEVELS = {
+    easy: {
+      sub: '쉬움 · 소화효소와 분해하는 영양소, 이자와 이자액을 짝지어 보세요.',
+      cols: 4, colsSm: 3, gridmax: '1000px',
+      rules: [['소화효소', '영양소'], ['분비 기관', '소화액']],
+      ids: ['aml', 'starch', 'pep', 'protein', 'lip', 'fat', 'panG', 'pan']
+    },
+    normal: {
+      sub: '보통 · 소화효소 ↔ 영양소, 분비 기관 ↔ 소화액. 단백질 카드는 펩신·트립신 어느 쪽과도 짝이 돼요.',
+      cols: 7, colsSm: 4, gridmax: '1320px',
+      rules: [['소화효소', '영양소'], ['분비 기관', '소화액']],
+      ids: ['aml', 'starch', 'pep', 'try', 'protein', 'protein', 'lip', 'fat', 'salG', 'sal', 'stoG', 'gas', 'panG', 'pan']
+    },
+    hard: {
+      sub: '어려움 · 효소(말테이스·펩티데이스 포함), 분비 기관, 최종 산물까지! 같은 영양소 카드가 여러 장이면 어느 짝과 맞혀도 돼요.',
+      cols: 7, colsSm: 4, gridmax: '1320px',
+      rules: [['소화효소', '영양소'], ['최종 산물', '영양소'], ['분비 기관', '소화액'], ['위액 속 물질', '하는 일']],
+      ids: ['aml', 'glu', 'starch', 'starch', 'mal', 'maltose', 'pep', 'try', 'ptd', 'ami', 'protein', 'protein', 'protein', 'protein', 'lip', 'fap', 'fat', 'fat',
+            'salG', 'sal', 'stoG', 'gas', 'panG', 'pan', 'livG', 'bil', 'hcl', 'hclJob']
+    }
+  };
+
+  // ---------- 상태 ----------
+  const state = { level: 'easy', team: false, deck: [], open: [], lock: false, tries: 0, pairs: 0, scores: [0, 0], turn: 0 };
+  const $ = id => document.getElementById(id);
+  const grid = $('grid');
+
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  function newGame() {
+    const lv = LEVELS[state.level];
+    state.deck = shuffle(lv.ids.map(id => ({ ...C[id], done: false })));
+    Object.assign(state, { open: [], lock: false, tries: 0, pairs: 0, scores: [0, 0], turn: 0 });
+    $('sub').textContent = lv.sub;
+    $('rules').innerHTML = '<span class="lead">이렇게 짝지어요</span>' + lv.rules.map(([x, y]) => `<span class="rule">${x} <i>↔</i> ${y}</span>`).join('');
+    grid.style.setProperty('--cols', lv.cols);
+    grid.style.setProperty('--cols-sm', lv.colsSm);
+    grid.style.setProperty('--gridmax', lv.gridmax);
+    $('win').hidden = true;
+    setFeedback(null, '같은 짝이라고 생각하는 카드 두 장을 차례로 누르세요.');
+    renderGrid();
+    renderStatus();
+  }
+
+  function renderGrid() {
+    grid.innerHTML = '';
+    state.deck.forEach((c, idx) => {
+      const b = document.createElement('button');
+      b.className = 'cardbtn';
+      b.id = 'card-' + idx;
+      b.setAttribute('aria-label', '뒤집힌 카드 ' + (idx + 1));
+      b.innerHTML = `<div class="inner"><div class="face back"><span>?</span></div><div class="face front"><span class="chip">${c.chip}</span>${c.art()}<span class="name${c.long ? ' long' : ''}">${c.name}</span>${c.note ? `<span class="note">${c.note}</span>` : ''}</div></div>`;
+      b.addEventListener('click', () => pick(idx));
+      grid.appendChild(b);
+    });
+  }
+
+  const cardEl = idx => $('card-' + idx);
+
+  function renderStatus() {
+    const total = state.deck.length / 2;
+    const s = $('status');
+    if (state.team) {
+      s.innerHTML = ['1팀', '2팀'].map((t, i) => `<div class="score team ${state.turn === i ? 'active' : ''}"><span>${t}</span><b>${state.scores[i]}</b><span class="turn">차례</span></div>`).join('') +
+        `<div class="score"><span>남은 짝</span><b>${total - state.pairs}</b></div>`;
+    } else {
+      s.innerHTML = `<div class="score"><span>찾은 짝</span><b>${state.pairs} / ${total}</b></div><div class="score"><span>시도</span><b>${state.tries}</b></div>`;
+    }
+  }
+
+  function setFeedback(title, text) {
+    $('feedback').innerHTML = (title ? `<strong>${title}</strong>` : '') + `<span>${text}</span>`;
+  }
+
+  function pick(idx) {
+    const c = state.deck[idx];
+    if (state.lock || c.done || state.open.includes(idx)) return;
+    state.open.push(idx);
+    const el = cardEl(idx);
+    el.classList.add('open');
+    el.setAttribute('aria-label', `${c.chip} 카드: ${c.name}`);
+    if (state.open.length < 2) return;
+
+    state.tries++;
+    const [i, j] = state.open;
+    const a = state.deck[i], b = state.deck[j];
+    if (a.key === b.key && a.side !== b.side) {
+      a.done = b.done = true;
+      state.pairs++;
+      if (state.team) state.scores[state.turn]++;
+      [i, j].forEach(k => { const e = cardEl(k); e.classList.remove('open'); e.classList.add('done'); });
+      const m = (a.side === 'a' ? a : b).msg;
+      setFeedback('정답! ' + m[0], m[1]);
+      state.open = [];
+      renderStatus();
+      if (state.pairs === state.deck.length / 2) setTimeout(finish, 900);
+    } else {
+      state.lock = true;
+      [i, j].forEach(k => cardEl(k).classList.add('wrong'));
+      setFeedback('아쉬워요', a.side === b.side && a.chip === b.chip
+        ? `둘 다 '${a.chip}' 카드예요. 다른 종류의 카드끼리 짝지어 보세요.`
+        : '짝이 아니에요. 카드 위치를 기억해 두세요!');
+      setTimeout(() => {
+        [i, j].forEach(k => { const e = cardEl(k); e.classList.remove('open', 'wrong'); e.setAttribute('aria-label', '뒤집힌 카드 ' + (k + 1)); });
+        state.open = [];
+        state.lock = false;
+        if (state.team) state.turn = 1 - state.turn;
+        renderStatus();
+      }, 1400);
+      renderStatus();
+    }
+  }
+
+  function finish() {
+    if (state.team) {
+      const [x, y] = state.scores;
+      $('win-title').textContent = x === y ? '무승부!' : (x > y ? '1팀 승리!' : '2팀 승리!');
+      $('win-text').textContent = `1팀 ${x}짝 · 2팀 ${y}짝`;
+    } else {
+      $('win-title').textContent = '모든 짝을 찾았어요!';
+      $('win-text').textContent = `${state.tries}번 만에 ${state.pairs}짝을 모두 찾았어요.`;
+    }
+    $('win').hidden = false;
+  }
+
+  function revealAll() {
+    state.deck.forEach((c, idx) => { c.done = true; const e = cardEl(idx); e.classList.remove('open', 'wrong'); e.classList.add('done'); e.setAttribute('aria-label', `${c.chip} 카드: ${c.name}`); });
+    state.open = [];
+    state.lock = false;
+    setFeedback('정답 공개', '모든 카드를 열었어요. 새 게임을 누르면 다시 섞여요.');
+  }
+
+  function choose(group, id) { group.forEach(g => $(g).setAttribute('aria-pressed', g === id ? 'true' : 'false')); }
+  const LV = ['lv-easy', 'lv-normal', 'lv-hard'];
+  LV.forEach(id => { $(id).onclick = () => { state.level = id.slice(3); choose(LV, id); newGame(); }; });
+  $('play-solo').onclick = () => { state.team = false; choose(['play-solo', 'play-team'], 'play-solo'); newGame(); };
+  $('play-team').onclick = () => { state.team = true; choose(['play-solo', 'play-team'], 'play-team'); newGame(); };
+  $('restart').onclick = newGame;
+  $('again').onclick = newGame;
+  $('reveal').onclick = revealAll;
+
+  newGame();
+})();
+</script>
+
+</body>
+</html>
